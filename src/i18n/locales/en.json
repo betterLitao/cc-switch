@@ -101,6 +101,7 @@
   },
   "provider": {
     "connectivityCheck": "Connectivity check",
+    "modelAvailabilityCheck": "Test model availability",
     "tabProvider": "Provider",
     "tabUniversal": "Universal",
     "noProviders": "No providers added yet",
@@ -2773,6 +2774,13 @@
     "maxRetries": "Max Retries",
     "degradedThreshold": "Slow-response threshold (ms)",
     "error": "{{providerName}} check error: {{error}}"
+  },
+  "modelCheck": {
+    "success": "{{providerName}} model {{model}} is available ({{responseTimeMs}}ms)",
+    "degraded": "{{providerName}} model {{model}} is available but slow ({{responseTimeMs}}ms)",
+    "failed": "{{providerName}} model {{model}} is unavailable: {{message}}",
+    "failedHint": "This was a real model request. Check the model name, API key, protocol, and quota.",
+    "error": "{{providerName}} model test failed: {{error}}"
   },
   "proxyConfig": {
     "proxyEnabled": "Routing Master Switch",
