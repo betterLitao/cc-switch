@@ -226,7 +226,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $files = Get-ChildItem -Path 'src-tauri/target' -Recurse -File -Include *.msi,*.exe,*.nsis.zip
+          $files = Get-ChildItem -Path 'src-tauri/target' -Recurse -File -Include *.msi,*.exe,*.nsis.zip |
+            Where-Object { $_.FullName -match '\\bundle\\(msi|nsis)\\' }
           if ($files.Count -eq 0) { throw 'No Windows installer artifact was produced' }
           foreach ($file in $files) {
             Copy-Item $file.FullName (Join-Path 'dist' $file.Name)
@@ -282,7 +283,16 @@ jobs:
           if [ -z "$tag" ]; then
             tag="custom-${GITHUB_RUN_NUMBER}"
           fi
-          mapfile -d '' files < <(find artifacts -type f -print0)
+          mkdir -p release-assets
+          while IFS= read -r -d '' file; do
+            name="$(basename "$file")"
+            if [ "$name" = "build-script-build.exe" ]; then
+              continue
+            fi
+            artifact="$(basename "$(dirname "$file")")"
+            cp "$file" "release-assets/${artifact}__${name}"
+          done < <(find artifacts -type f -print0)
+          mapfile -d '' files < <(find release-assets -type f -print0)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No downloaded installer artifacts" >&2
             exit 1
