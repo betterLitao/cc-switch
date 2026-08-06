@@ -102,6 +102,7 @@
   },
   "provider": {
     "connectivityCheck": "接続チェック",
+    "modelAvailabilityCheck": "モデルの利用可否をテスト",
     "tabProvider": "プロバイダー",
     "tabUniversal": "統一プロバイダー",
     "noProviders": "まだプロバイダーがありません",
@@ -2985,6 +2986,13 @@
     "maxRetries": "最大リトライ回数",
     "degradedThreshold": "低速判定しきい値（ミリ秒）",
     "error": "{{providerName}} のチェックでエラーが発生しました: {{error}}"
+  },
+  "modelCheck": {
+    "success": "{{providerName}} のモデル {{model}} は利用可能です ({{responseTimeMs}}ms)",
+    "degraded": "{{providerName}} のモデル {{model}} は利用可能ですが応答が遅いです ({{responseTimeMs}}ms)",
+    "failed": "{{providerName}} のモデル {{model}} は利用できません: {{message}}",
+    "failedHint": "これは実際のモデルリクエストの結果です。モデル名、API Key、プロトコル、クォータを確認してください。",
+    "error": "{{providerName}} のモデルテストに失敗しました: {{error}}"
   },
   "proxyConfig": {
     "proxyEnabled": "ルーティング総スイッチ",
