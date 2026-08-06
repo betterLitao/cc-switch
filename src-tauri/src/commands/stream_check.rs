@@ -4,8 +4,10 @@
 //! 熔断器（熔断器由真实转发流量驱动）。详见 `services::stream_check`。
 
 use crate::app_config::AppType;
-use crate::commands::copilot::CopilotAuthState;
+use crate::commands::{CodexOAuthState, CopilotAuthState, XaiOAuthState};
 use crate::error::AppError;
+use crate::proxy::providers::{AuthInfo, AuthStrategy};
+use crate::services::model_check::{ModelCheckResult, ModelCheckService};
 use crate::services::stream_check::{
     HealthStatus, StreamCheckConfig, StreamCheckResult, StreamCheckService,
 };
@@ -42,6 +44,46 @@ pub async fn stream_check_provider(
             .save_stream_check_log(&provider_id, &provider.name, app_type.as_str(), &result);
 
     Ok(result)
+}
+
+/// 模型可用性检查（单个供应商）
+///
+/// 与 `stream_check_provider` 完全分开：这里会发送一次最小真实流式请求，
+/// 用于验证当前保存的模型、认证、协议转换和上游响应，而不是只验证 URL 可达。
+#[tauri::command]
+pub async fn model_check_provider(
+    state: State<'_, AppState>,
+    copilot_state: State<'_, CopilotAuthState>,
+    codex_state: State<'_, CodexOAuthState>,
+    xai_state: State<'_, XaiOAuthState>,
+    app_type: AppType,
+    provider_id: String,
+    requested_model: Option<String>,
+) -> Result<ModelCheckResult, AppError> {
+    let providers = state.db.get_all_providers(app_type.as_str())?;
+    let provider = providers
+        .get(&provider_id)
+        .ok_or_else(|| AppError::Message(format!("供应商 {provider_id} 不存在")))?;
+
+    let (auth_override, base_url_override, managed_account_id) = resolve_model_check_overrides(
+        &app_type,
+        provider,
+        &copilot_state,
+        &codex_state,
+        &xai_state,
+    )
+    .await?;
+
+    ModelCheckService::check(
+        &app_type,
+        provider,
+        requested_model,
+        auth_override,
+        base_url_override,
+        None,
+        managed_account_id,
+    )
+    .await
 }
 
 /// 批量连通性检查
@@ -155,6 +197,111 @@ async fn resolve_copilot_base_url_override(
     };
 
     Ok(Some(endpoint))
+}
+
+/// 真实模型检查需要把托管 OAuth 认证解析成一次性请求凭据；普通 Provider
+/// 继续由 `ModelCheckService` 从保存的配置中提取，避免命令层重复实现认证规则。
+async fn resolve_model_check_overrides(
+    app_type: &AppType,
+    provider: &crate::provider::Provider,
+    copilot_state: &State<'_, CopilotAuthState>,
+    codex_state: &State<'_, CodexOAuthState>,
+    xai_state: &State<'_, XaiOAuthState>,
+) -> Result<(Option<AuthInfo>, Option<String>, Option<String>), AppError> {
+    if matches!(app_type, AppType::Claude | AppType::ClaudeDesktop) && provider.is_github_copilot()
+    {
+        let auth_manager = copilot_state.0.read().await;
+        let account_id = provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.managed_account_id_for("github_copilot"));
+        let token = match account_id.as_deref() {
+            Some(id) => auth_manager
+                .get_valid_token_for_account(id)
+                .await
+                .map_err(|error| AppError::Message(error.to_string()))?,
+            None => auth_manager
+                .get_valid_token()
+                .await
+                .map_err(|error| AppError::Message(error.to_string()))?,
+        };
+        let endpoint = match account_id.as_deref() {
+            Some(id) => auth_manager.get_api_endpoint(id).await,
+            None => auth_manager.get_default_api_endpoint().await,
+        };
+
+        return Ok((
+            Some(AuthInfo::new(token, AuthStrategy::GitHubCopilot)),
+            Some(endpoint),
+            None,
+        ));
+    }
+
+    if matches!(
+        app_type,
+        AppType::Claude | AppType::ClaudeDesktop | AppType::Codex
+    ) && provider.is_codex_oauth()
+    {
+        let auth_manager = codex_state.0.read().await;
+        let account_id = match provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.managed_account_id_for("codex_oauth"))
+        {
+            Some(id) => Some(id),
+            None => auth_manager.default_account_id().await,
+        };
+        let token = match account_id.as_deref() {
+            Some(id) => auth_manager
+                .get_valid_token_for_account(id)
+                .await
+                .map_err(|error| AppError::Message(error.to_string()))?,
+            None => auth_manager
+                .get_valid_token()
+                .await
+                .map_err(|error| AppError::Message(error.to_string()))?,
+        };
+
+        return Ok((
+            Some(AuthInfo::new(token, AuthStrategy::CodexOAuth)),
+            None,
+            account_id,
+        ));
+    }
+
+    if matches!(
+        app_type,
+        AppType::Claude | AppType::ClaudeDesktop | AppType::Codex | AppType::GrokBuild
+    ) && provider.is_xai_oauth()
+    {
+        let auth_manager = xai_state.0.read().await;
+        let account_id = match provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.managed_account_id_for("xai_oauth"))
+        {
+            Some(id) => Some(id),
+            None => auth_manager.default_account_id().await,
+        };
+        let token = match account_id.as_deref() {
+            Some(id) => auth_manager
+                .get_valid_token_for_account(id)
+                .await
+                .map_err(|error| AppError::Message(error.to_string()))?,
+            None => auth_manager
+                .get_valid_token()
+                .await
+                .map_err(|error| AppError::Message(error.to_string()))?,
+        };
+
+        return Ok((
+            Some(AuthInfo::new(token, AuthStrategy::XaiOAuth)),
+            None,
+            account_id,
+        ));
+    }
+
+    Ok((None, None, None))
 }
 
 fn is_copilot_provider(provider: &crate::provider::Provider) -> bool {
