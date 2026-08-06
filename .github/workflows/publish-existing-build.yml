@@ -46,7 +46,16 @@ jobs:
           if [ -z "$tag" ]; then
             tag="custom-source-${SOURCE_RUN_ID}"
           fi
-          mapfile -d '' files < <(find artifacts -type f -print0)
+          mkdir -p release-assets
+          while IFS= read -r -d '' file; do
+            name="$(basename "$file")"
+            if [ "$name" = "build-script-build.exe" ]; then
+              continue
+            fi
+            artifact="$(basename "$(dirname "$file")")"
+            cp "$file" "release-assets/${artifact}__${name}"
+          done < <(find artifacts -type f -print0)
+          mapfile -d '' files < <(find release-assets -type f -print0)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No downloaded installer artifacts" >&2
             exit 1
