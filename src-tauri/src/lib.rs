@@ -1547,6 +1547,7 @@ pub fn run() {
             // Stream health check
             commands::stream_check_provider,
             commands::stream_check_all_providers,
+            commands::model_check_provider,
             commands::get_stream_check_config,
             commands::save_stream_check_config,
             // Session manager
