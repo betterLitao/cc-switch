@@ -1,0 +1,79 @@
+name: Sync Upstream and Build
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout custom branch
+        uses: actions/checkout@v6
+        with:
+          ref: custom/model-availability
+          fetch-depth: 0
+
+      - name: Rebase on upstream
+        id: rebase
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/farion1231/cc-switch.git 2>/dev/null || true
+
+          git fetch upstream --prune
+          upstream_branch=$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')
+          upstream_branch=${upstream_branch:-main}
+
+          set +e
+          git rebase "upstream/${upstream_branch}"
+          rebase_status=$?
+          set -e
+
+          if [ "$rebase_status" -ne 0 ]; then
+            git status --short > upstream-rebase-status.txt || true
+            git diff --binary > upstream-rebase.patch || true
+            git diff --check > upstream-rebase-diff-check.txt || true
+            git rebase --abort || true
+            exit "$rebase_status"
+          fi
+
+      - name: Upload rebase diagnostics
+        if: steps.rebase.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-rebase-conflict-${{ github.run_number }}
+          path: |
+            upstream-rebase-status.txt
+            upstream-rebase.patch
+            upstream-rebase-diff-check.txt
+          if-no-files-found: warn
+
+      - name: Stop after rebase conflict
+        if: steps.rebase.outcome == 'failure'
+        run: exit 1
+
+      - name: Push rebased branch
+        shell: bash
+        run: git push --force-with-lease origin HEAD:custom/model-availability
+
+      - name: Start custom build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run custom-build.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref custom/model-availability \
+            -f publish_release=false
