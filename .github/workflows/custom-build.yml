@@ -6,7 +6,7 @@ on:
       publish_release:
         description: "同时创建未签名 GitHub prerelease"
         required: false
-        default: false
+        default: true
         type: boolean
       release_tag:
         description: "prerelease tag；留空则使用 custom-<run number>"
