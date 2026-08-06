@@ -76,4 +76,4 @@ jobs:
           gh workflow run custom-build.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref custom/model-availability \
-            -f publish_release=false
+            -f publish_release=true
