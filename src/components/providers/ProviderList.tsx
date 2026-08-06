@@ -31,6 +31,7 @@ import {
   useHermesModelConfig,
 } from "@/hooks/useHermes";
 import { useStreamCheck } from "@/hooks/useStreamCheck";
+import { useModelCheck } from "@/hooks/useModelCheck";
 import { ProviderCard } from "@/components/providers/ProviderCard";
 import { ProviderEmptyState } from "@/components/providers/ProviderEmptyState";
 import {
@@ -93,6 +94,8 @@ export function ProviderList({
 }: ProviderListProps) {
   const { t } = useTranslation();
   const { checkProvider, isChecking } = useStreamCheck(appId);
+  const { checkProvider: checkModelProvider, isChecking: isModelChecking } =
+    useModelCheck(appId);
   const { sortedProviders, sensors, handleDragEnd } = useDragSort(
     providers,
     appId,
@@ -205,6 +208,13 @@ export function ProviderList({
       checkProvider(provider.id, provider.name);
     },
     [checkProvider],
+  );
+
+  const handleModelCheck = useCallback(
+    (provider: Provider) => {
+      checkModelProvider(provider.id, provider.name);
+    },
+    [checkModelProvider],
   );
 
   // Import current live config as default provider
@@ -422,6 +432,8 @@ export function ProviderList({
                 onOpenTerminal={onOpenTerminal}
                 onTest={handleTest}
                 isTesting={isChecking(provider.id)}
+                onModelCheck={handleModelCheck}
+                isModelChecking={isModelChecking(provider.id)}
                 isProxyRunning={isProxyRunning}
                 isProxyTakeover={isProxyTakeover}
                 isAutoFailoverEnabled={isFailoverModeActive}
@@ -563,6 +575,8 @@ interface SortableProviderCardProps {
   onOpenTerminal?: (provider: Provider) => void;
   onTest?: (provider: Provider) => void;
   isTesting: boolean;
+  onModelCheck?: (provider: Provider) => void;
+  isModelChecking: boolean;
   isProxyRunning: boolean;
   isProxyTakeover: boolean;
   isAutoFailoverEnabled: boolean;
@@ -594,6 +608,8 @@ function SortableProviderCard({
   onOpenTerminal,
   onTest,
   isTesting,
+  onModelCheck,
+  isModelChecking,
   isProxyRunning,
   isProxyTakeover,
   isAutoFailoverEnabled,
@@ -641,6 +657,8 @@ function SortableProviderCard({
         onOpenTerminal={onOpenTerminal}
         onTest={onTest}
         isTesting={isTesting}
+        onModelCheck={onModelCheck}
+        isModelChecking={isModelChecking}
         isProxyRunning={isProxyRunning}
         isProxyTakeover={isProxyTakeover}
         dragHandleProps={{
