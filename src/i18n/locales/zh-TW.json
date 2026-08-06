@@ -101,6 +101,7 @@
   },
   "provider": {
     "connectivityCheck": "檢測連通",
+    "modelAvailabilityCheck": "測試模型可用性",
     "tabProvider": "供應商",
     "tabUniversal": "通用供應商",
     "noProviders": "尚未新增任何供應商",
@@ -2771,6 +2772,13 @@
     "maxRetries": "最大重試次數",
     "degradedThreshold": "緩慢閾值（毫秒）",
     "error": "{{providerName}} 檢查出錯：{{error}}"
+  },
+  "modelCheck": {
+    "success": "{{providerName}} 的模型 {{model}} 可用 ({{responseTimeMs}}ms)",
+    "degraded": "{{providerName}} 的模型 {{model}} 可用但回應較慢 ({{responseTimeMs}}ms)",
+    "failed": "{{providerName}} 的模型 {{model}} 不可用：{{message}}",
+    "failedHint": "這是真實模型請求結果；請檢查模型名稱、API Key、介面協定與額度。",
+    "error": "{{providerName}} 模型測試出錯：{{error}}"
   },
   "proxyConfig": {
     "proxyEnabled": "路由總開關",
