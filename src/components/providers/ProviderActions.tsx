@@ -10,6 +10,7 @@ import {
   Play,
   Plus,
   Terminal,
+  TestTube2,
   Trash2,
   Zap,
 } from "lucide-react";
@@ -36,12 +37,14 @@ interface ProviderActionsProps {
   isCurrent: boolean;
   isInConfig?: boolean;
   isTesting?: boolean;
+  isModelChecking?: boolean;
   isProxyTakeover?: boolean;
   isOmo?: boolean;
   onSwitch: () => void;
   onEdit: () => void;
   onDuplicate?: () => void;
   onTest?: () => void;
+  onModelCheck?: () => void;
   onConfigureUsage?: () => void;
   onDelete: () => void;
   onRemoveFromConfig?: () => void;
@@ -78,12 +81,14 @@ export function ProviderActions({
   isCurrent,
   isInConfig = false,
   isTesting,
+  isModelChecking,
   isProxyTakeover = false,
   isOmo = false,
   onSwitch,
   onEdit,
   onDuplicate,
   onTest,
+  onModelCheck,
   onConfigureUsage,
   onDelete,
   onRemoveFromConfig,
@@ -427,6 +432,25 @@ export function ProviderActions({
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Activity className="h-4 w-4" />
+          )}
+        </Button>
+
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onModelCheck || undefined}
+          disabled={isModelChecking}
+          title={t("provider.modelAvailabilityCheck", "测试模型可用性")}
+          className={cn(
+            iconButtonClass,
+            !onModelCheck &&
+              "opacity-40 cursor-not-allowed text-muted-foreground",
+          )}
+        >
+          {isModelChecking ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <TestTube2 className="h-4 w-4" />
           )}
         </Button>
 

@@ -65,8 +65,10 @@ interface ProviderCardProps {
   onOpenWebsite: (url: string) => void;
   onDuplicate: (provider: Provider) => void;
   onTest?: (provider: Provider) => void;
+  onModelCheck?: (provider: Provider) => void;
   onOpenTerminal?: (provider: Provider) => void;
   isTesting?: boolean;
+  isModelChecking?: boolean;
   isProxyRunning: boolean;
   isProxyTakeover?: boolean; // 代理接管模式（Live配置已被接管，切换为热切换）
   dragHandleProps?: DragHandleProps;
@@ -182,8 +184,10 @@ export function ProviderCard({
   onOpenWebsite,
   onDuplicate,
   onTest,
+  onModelCheck,
   onOpenTerminal,
   isTesting,
+  isModelChecking,
   isProxyRunning,
   isProxyTakeover = false,
   dragHandleProps,
@@ -703,6 +707,16 @@ export function ProviderCard({
                   ? () => onTest(provider)
                   : undefined
               }
+              onModelCheck={
+                onModelCheck &&
+                (provider.category !== "official" ||
+                  isCopilot ||
+                  isCodexOauth ||
+                  isXaiOauth)
+                  ? () => onModelCheck(provider)
+                  : undefined
+              }
+              isModelChecking={isModelChecking}
               onConfigureUsage={
                 (isOfficial && !supportsOfficialSubscription) ||
                 isCopilot ||
