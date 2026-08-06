@@ -1,0 +1,294 @@
+name: Custom Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "同时创建未签名 GitHub prerelease"
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: "prerelease tag；留空则使用 custom-<run number>"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: custom/model-availability
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          corepack enable
+          corepack install
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript type check
+        run: pnpm typecheck
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      # App integration tests exercise a real Tauri/browser boundary and are
+      # currently flaky in the upstream baseline (timeouts and DOM leakage).
+      # Keep the automatic update gate deterministic while the full suite
+      # remains covered by the repository CI workflow.
+      - name: Unit tests (stable suites)
+        shell: bash
+        run: |
+          mapfile -d '' test_files < <(
+            find src tests -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) \
+              ! -path 'tests/integration/*' -print0
+          )
+          if [ "${#test_files[@]}" -eq 0 ]; then
+            echo "No stable frontend test files found" >&2
+            exit 1
+          fi
+          pnpm exec vitest run "${test_files[@]}"
+
+  backend:
+    name: Rust checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-14]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: custom/model-availability
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libssl-dev \
+            libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev \
+            || sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.0-dev
+          sudo apt-get install -y --no-install-recommends libsoup-3.0-dev \
+            || sudo apt-get install -y --no-install-recommends libsoup2.4-dev
+
+      - name: Rust format check
+        run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Rust tests (Unix)
+        if: runner.os != 'Windows'
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust tests (Windows)
+        if: runner.os == 'Windows'
+        # These two existing tests create symlinks. GitHub-hosted Windows
+        # runners do not grant the required privilege unless Developer Mode
+        # is enabled, so skip only those environment-dependent cases.
+        run: >-
+          cargo test --manifest-path src-tauri/Cargo.toml --
+          --skip resolve_catalog_rejects_symlink_escaping_config_dir
+          --skip symlink_cycle_does_not_cause_stack_overflow
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: [frontend, backend]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-2022
+            target: ""
+            bundles: "msi,nsis"
+          - name: windows-arm64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bundles: "msi"
+          - name: linux-x64
+            os: ubuntu-22.04
+            target: ""
+            bundles: "appimage,deb,rpm"
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+            target: ""
+            bundles: "appimage,deb"
+          - name: macos-universal
+            os: macos-14
+            target: universal-apple-darwin
+            bundles: "dmg"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: custom/model-availability
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          corepack enable
+          corepack install
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Windows ARM64 target
+        if: runner.os == 'Windows' && matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: rustup target add aarch64-pc-windows-msvc
+
+      - name: Add macOS targets
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config curl wget file patchelf \
+            libssl-dev rpm flatpak flatpak-builder elfutils xdg-utils \
+            libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev \
+            || sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.0-dev
+          sudo apt-get install -y --no-install-recommends libsoup-3.0-dev \
+            || sudo apt-get install -y --no-install-recommends libsoup2.4-dev
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          BUILD_BUNDLES: ${{ matrix.bundles }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $config = '{"bundle":{"createUpdaterArtifacts":false}}'
+          if ($env:BUILD_TARGET) {
+            pnpm tauri build --target $env:BUILD_TARGET --bundles $env:BUILD_BUNDLES --config $config
+          } else {
+            pnpm tauri build --bundles $env:BUILD_BUNDLES --config $config
+          }
+
+      - name: Build Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          BUILD_BUNDLES: ${{ matrix.bundles }}
+        run: pnpm tauri build --bundles "$BUILD_BUNDLES" --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Build macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: pnpm tauri build --target universal-apple-darwin --bundles dmg --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Collect Windows installers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $files = Get-ChildItem -Path 'src-tauri/target' -Recurse -File -Include *.msi,*.exe,*.nsis.zip
+          if ($files.Count -eq 0) { throw 'No Windows installer artifact was produced' }
+          foreach ($file in $files) {
+            Copy-Item $file.FullName (Join-Path 'dist' $file.Name)
+          }
+
+      - name: Collect Linux packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find src-tauri/target -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -exec cp {} dist/ \;
+          test -n "$(find dist -type f -print -quit)"
+
+      - name: Collect macOS installer
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.tar.gz' \) -exec cp {} dist/ \;
+          test -n "$(find dist -type f -print -quit)"
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-switch-${{ matrix.name }}-${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish optional prerelease
+    if: ${{ inputs.publish_release == true }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$REQUESTED_TAG"
+          if [ -z "$tag" ]; then
+            tag="custom-${GITHUB_RUN_NUMBER}"
+          fi
+          mapfile -d '' files < <(find artifacts -type f -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No downloaded installer artifacts" >&2
+            exit 1
+          fi
+          gh release create "$tag" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --title "CC Switch $tag" \
+            --notes "Unsigned custom build from custom/model-availability."
