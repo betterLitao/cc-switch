@@ -286,9 +286,10 @@ jobs:
           mkdir -p release-assets
           while IFS= read -r -d '' file; do
             name="$(basename "$file")"
-            if [ "$name" = "build-script-build.exe" ]; then
-              continue
-            fi
+            case "$name" in
+              *.msi|*.nsis.zip|*-setup.exe|*.AppImage|*.deb|*.rpm|*.dmg|*.tar.gz) ;;
+              *) continue ;;
+            esac
             artifact="$(basename "$(dirname "$file")")"
             cp "$file" "release-assets/${artifact}__${name}"
           done < <(find artifacts -type f -print0)
