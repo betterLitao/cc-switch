@@ -101,6 +101,7 @@
   },
   "provider": {
     "connectivityCheck": "检测连通",
+    "modelAvailabilityCheck": "测试模型可用性",
     "tabProvider": "供应商",
     "tabUniversal": "统一供应商",
     "noProviders": "还没有添加任何供应商",
@@ -2969,6 +2970,13 @@
     "maxRetries": "最大重试次数",
     "degradedThreshold": "较慢阈值（毫秒）",
     "error": "{{providerName}} 检查出错: {{error}}"
+  },
+  "modelCheck": {
+    "success": "{{providerName}} 的模型 {{model}} 可用 ({{responseTimeMs}}ms)",
+    "degraded": "{{providerName}} 的模型 {{model}} 可用但响应较慢 ({{responseTimeMs}}ms)",
+    "failed": "{{providerName}} 的模型 {{model}} 不可用: {{message}}",
+    "failedHint": "这是真实模型请求结果；请检查模型名、API Key、接口协议和额度。",
+    "error": "{{providerName}} 模型测试出错: {{error}}"
   },
   "proxyConfig": {
     "proxyEnabled": "路由总开关",
