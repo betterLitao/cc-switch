@@ -1,0 +1,58 @@
+name: Publish Existing Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "包含待发布安装包的 Custom Build run ID"
+        required: true
+        type: string
+      release_tag:
+        description: "prerelease tag；留空则使用 custom-source-<run ID>"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-existing-build
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish existing installers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download installers from source run
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          path: artifacts
+
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$REQUESTED_TAG"
+          if [ -z "$tag" ]; then
+            tag="custom-source-${SOURCE_RUN_ID}"
+          fi
+          mapfile -d '' files < <(find artifacts -type f -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No downloaded installer artifacts" >&2
+            exit 1
+          fi
+          gh release create "$tag" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --title "CC Switch $tag" \
+            --notes "Unsigned custom build published from Actions run ${SOURCE_RUN_ID}."
