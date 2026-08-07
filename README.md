@@ -18,6 +18,26 @@ English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_
 
 </div>
 
+## 本仓库定制说明 | Custom Fork Changes
+
+本仓库基于上游 [farion1231/cc-switch](https://github.com/farion1231/cc-switch)，保留原项目的主要功能，并针对供应商和模型可用性验证、持续同步与定制构建增加了以下内容。本仓库的构建产物属于非官方定制版本，与上游官方发布版无隶属关系。
+
+### 模型与供应商检测
+
+- **基础连通性检测**：只检测供应商地址是否能够建立网络连接，不发送真实模型请求，不代表 API Key、模型名称或协议转换一定可用。
+- **模型可用性检测**：在供应商卡片上提供独立的模型测试入口，自动读取已保存的 Provider 配置，发送一次最小真实流式请求，并校验模型响应、认证、接口协议和上游返回结果。
+- **协议适配**：根据 Provider 配置选择 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Gemini 等请求格式，并处理流式响应和模型别名/参数。
+- **结果反馈**：区分可用、可用但响应较慢、不可用和请求错误，显示实际测试模型、响应时间及失败原因。
+- **使用提示**：模型检测是真实请求，可能消耗少量额度；基础连通性检测不用于证明模型可用。
+
+### 自动同步与定制构建
+
+- **上游同步**：通过 GitHub Actions 定期将 `farion1231/cc-switch` 的更新 rebase 到 `custom/model-availability` 分支，也支持在 Actions 页面手动运行。
+- **自动验证**：rebase 成功后，远程执行前端类型检查、格式检查、稳定单元测试，以及 Windows、macOS、Linux 上的 Rust 检查。
+- **多平台构建**：验证通过后自动构建 Windows x64/ARM64、Linux x64/ARM64 和 macOS Universal 安装包。
+- **构建产物**：可选发布为 GitHub prerelease，方便下载和安装；构建产物未进行官方代码签名，安装前请确认来源。
+- **数据安全**：同步代码和重新安装程序不会主动删除 `~/.cc-switch/` 下的 Provider、MCP、Prompt、Skill 和设置数据，仍建议在升级前保留数据库备份。
+
 ## ❤️Sponsor
 
 > [Want to appear here?](mailto:farion1231@gmail.com)
