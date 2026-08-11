@@ -22,6 +22,20 @@ jobs:
         with:
           ref: custom/model-availability
           fetch-depth: 0
+          # The default GITHUB_TOKEN cannot push upstream changes that touch
+          # workflow files. Store a classic PAT with repo + workflow scopes as
+          # the UPSTREAM_SYNC_TOKEN repository secret.
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+
+      - name: Verify sync token
+        env:
+          SYNC_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$SYNC_TOKEN" ]; then
+            echo "::error::Missing repository secret UPSTREAM_SYNC_TOKEN. It must be a token with repo and workflow scopes."
+            exit 1
+          fi
 
       - name: Rebase on upstream
         id: rebase
@@ -71,7 +85,7 @@ jobs:
 
       - name: Start custom build
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
         run: |
           gh workflow run custom-build.yml \
             --repo "$GITHUB_REPOSITORY" \
