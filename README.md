@@ -38,6 +38,15 @@ English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_
 - **构建产物**：可选发布为 GitHub prerelease，方便下载和安装；构建产物未进行官方代码签名，安装前请确认来源。
 - **数据安全**：同步代码和重新安装程序不会主动删除 `~/.cc-switch/` 下的 Provider、MCP、Prompt、Skill 和设置数据，仍建议在升级前保留数据库备份。
 
+### 首次配置自动同步
+
+由于上游更新可能同时修改 GitHub Actions workflow，自动 rebase 和推送不能使用默认的 `GITHUB_TOKEN`。请在本仓库的 **Settings → Secrets and variables → Actions** 中新增仓库 Secret：
+
+- 名称：`UPSTREAM_SYNC_TOKEN`
+- 值：一个属于仓库维护者的 GitHub Personal Access Token，至少具备 `repo` 和 `workflow` scope
+
+配置后，`Sync Upstream and Build` 会使用该令牌拉取上游、推送 rebase 结果并启动构建；令牌只保存为 GitHub 加密 Secret，不写入代码或构建产物。
+
 ## ❤️Sponsor
 
 > [Want to appear here?](mailto:farion1231@gmail.com)
