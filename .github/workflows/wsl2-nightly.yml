@@ -60,7 +60,45 @@ jobs:
 
       - name: Compile backend tests with native temp
         # link.exe/mt.exe cannot create manifests when TEMP points at a WSL UNC path.
-        run: cargo test --tests --manifest-path src-tauri/Cargo.toml --no-run
+        shell: pwsh
+        run: |
+          $nativeTemp = Join-Path $env:RUNNER_TEMP "cc-switch-native-temp"
+          New-Item -ItemType Directory -Force -Path $nativeTemp | Out-Null
+          $env:TEMP = $nativeTemp
+          $env:TMP = $nativeTemp
+
+          $compileOutput = @(& cargo test --tests --manifest-path src-tauri/Cargo.toml --no-run --message-format=json-render-diagnostics 2> cargo-build-errors.log)
+          $compileExitCode = $LASTEXITCODE
+          if ($compileExitCode -ne 0) {
+            if (Test-Path -LiteralPath "cargo-build-errors.log") {
+              Get-Content -LiteralPath "cargo-build-errors.log" | Select-Object -Last 120 | ForEach-Object { Write-Host $_ }
+            }
+            $compileOutput | Select-Object -Last 120 | ForEach-Object { Write-Host $_ }
+            exit $compileExitCode
+          }
+
+          $testBinaries = @(
+            foreach ($line in $compileOutput) {
+              try {
+                $message = ([string]$line).Trim() | ConvertFrom-Json
+              } catch {
+                continue
+              }
+              if (
+                $message.reason -eq "compiler-artifact" -and
+                $message.profile.test -eq $true -and
+                -not [string]::IsNullOrWhiteSpace([string]$message.executable)
+              ) {
+                [string]$message.executable
+              }
+            }
+          ) | Sort-Object -Unique
+
+          if ($testBinaries.Count -eq 0) {
+            throw "No test executables were reported by cargo"
+          }
+          ConvertTo-Json -InputObject $testBinaries -Compress |
+            Set-Content -LiteralPath "wsl-test-binaries.json" -Encoding utf8
 
       - name: Run Windows-to-WSL2 filesystem contract
         shell: pwsh
@@ -68,7 +106,14 @@ jobs:
           $env:TEMP = $env:CC_SWITCH_WSL_TEST_TEMP
           $env:TMP = $env:CC_SWITCH_WSL_TEST_TEMP
           $testName = "config::tests::atomic_write_replaces_existing_wsl_unc_file"
-          $testList = cargo test --tests --manifest-path src-tauri/Cargo.toml -- --ignored --list
+          $testBinaries = @(Get-Content -LiteralPath "wsl-test-binaries.json" -Raw | ConvertFrom-Json)
+          $testBinary = $testBinaries |
+            Where-Object { (Split-Path -Leaf $_) -like "cc_switch_lib-*.exe" } |
+            Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace([string]$testBinary)) {
+            throw "The cc_switch_lib test executable was not recorded"
+          }
+          $testList = & $testBinary --ignored --list
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -76,7 +121,7 @@ jobs:
           if ($testList -notcontains $expected) {
             throw "Expected ignored test was not discovered: $testName"
           }
-          cargo test --tests --manifest-path src-tauri/Cargo.toml $testName -- --ignored --exact --nocapture
+          & $testBinary $testName --ignored --exact --nocapture
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -86,4 +131,14 @@ jobs:
         run: |
           $env:TEMP = $env:CC_SWITCH_WSL_TEST_TEMP
           $env:TMP = $env:CC_SWITCH_WSL_TEST_TEMP
-          cargo test --tests --manifest-path src-tauri/Cargo.toml -- --test-threads=1
+          $testBinaries = @(Get-Content -LiteralPath "wsl-test-binaries.json" -Raw | ConvertFrom-Json)
+          if ($testBinaries.Count -eq 0) {
+            throw "No recorded test executables are available"
+          }
+          foreach ($testBinary in $testBinaries) {
+            Write-Host "Running test executable: $testBinary"
+            & $testBinary --test-threads=1
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+          }
