@@ -1,8 +1,8 @@
 name: WSL2 Nightly
 
-# The full backend suite takes 50+ minutes on a \\wsl.localhost 9P filesystem,
-# so it runs nightly instead of per PR. The per-PR gate in ci.yml only runs the
-# atomic-write contract test against the same WSL2-backed environment.
+# The full backend suite exercises a WSL2-backed HOME, so it runs nightly instead
+# of per PR. Keep TEMP native for the many unrelated tempfile-based tests; the
+# per-PR gate in ci.yml separately runs the atomic-write contract on WSL2 TEMP.
 on:
   schedule:
     - cron: "23 18 * * *" # 02:23 Beijing time
@@ -129,8 +129,14 @@ jobs:
       - name: Run full test suite against WSL2-backed home
         shell: pwsh
         run: |
-          $env:TEMP = $env:CC_SWITCH_WSL_TEST_TEMP
-          $env:TMP = $env:CC_SWITCH_WSL_TEST_TEMP
+          # Keep the HOME under WSL2, but keep generic test temp files on the
+          # Windows runner. The WSL2 UNC/9P filesystem is only needed by the
+          # dedicated atomic-write contract above and makes the full suite
+          # extremely slow when used as TEMP/TMP.
+          $nativeTemp = Join-Path $env:RUNNER_TEMP "cc-switch-native-temp"
+          New-Item -ItemType Directory -Force -Path $nativeTemp | Out-Null
+          $env:TEMP = $nativeTemp
+          $env:TMP = $nativeTemp
           $testBinaries = @(Get-Content -LiteralPath "wsl-test-binaries.json" -Raw | ConvertFrom-Json)
           if ($testBinaries.Count -eq 0) {
             throw "No recorded test executables are available"
