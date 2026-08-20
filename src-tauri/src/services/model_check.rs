@@ -134,7 +134,9 @@ impl ModelCheckService {
                 Self::check_gemini(&client, &base_url, &auth, &model, timeout, provider, None).await
             }
             AppType::OpenCode => Self::check_opencode(&client, provider, &model, timeout).await,
-            AppType::OpenClaw => Self::check_openclaw(&client, provider, &model, timeout).await,
+            AppType::OpenClaw | AppType::Pi => {
+                Self::check_structured_provider(&client, app_type, provider, &model, timeout).await
+            }
             AppType::Hermes => Self::check_hermes(&client, provider, &model, timeout).await,
         };
 
@@ -209,7 +211,7 @@ impl ModelCheckService {
             )
             .or_else(|| from_value(provider.settings_config.get("model")))
             .or_else(|| Some(DEFAULT_GEMINI_MODEL.to_string())),
-            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
+            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::Pi => {
                 Self::first_model(provider.settings_config.get("models"))
             }
         }
@@ -571,12 +573,19 @@ impl ModelCheckService {
         Self::send_json_and_validate(request, &body, timeout, model, CheckProtocol::Gemini).await
     }
 
-    async fn check_openclaw(
+    async fn check_structured_provider(
         client: &Client,
+        app_type: &AppType,
         provider: &Provider,
         model: &str,
         timeout: Duration,
     ) -> Result<(u16, String), AppError> {
+        let app_name = match app_type {
+            AppType::OpenClaw => "OpenClaw",
+            AppType::Pi => "Pi",
+            _ => unreachable!("structured provider check only supports OpenClaw and Pi"),
+        };
+
         if provider
             .settings_config
             .get("authHeader")
@@ -585,8 +594,12 @@ impl ModelCheckService {
         {
             return Err(AppError::localized(
                 "model_check_custom_auth_header",
-                "该 OpenClaw Provider 使用自定义认证头，无法安全推断测试请求。请直接在 OpenClaw 中测试。",
-                "This OpenClaw Provider uses a custom auth header that CC Switch cannot safely infer. Test it directly in OpenClaw.",
+                format!(
+                    "该 {app_name} Provider 使用自定义认证头，无法安全推断测试请求。请直接在 {app_name} 中测试。"
+                ),
+                format!(
+                    "This {app_name} Provider uses a custom auth header that CC Switch cannot safely infer. Test it directly in {app_name}."
+                ),
             ));
         }
 
@@ -598,7 +611,7 @@ impl ModelCheckService {
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| AppError::Message("OpenClaw 缺少 api 协议配置".to_string()))?;
+            .ok_or_else(|| AppError::Message(format!("{app_name} 缺少 api 协议配置")))?;
         let headers = provider
             .settings_config
             .get("headers")
@@ -661,10 +674,16 @@ impl ModelCheckService {
             }
             "bedrock-converse-stream" => Err(AppError::localized(
                 "model_check_bedrock_not_supported",
-                "AWS Bedrock 需要 SigV4 签名，当前不支持独立模型测试。请直接通过 OpenClaw 验证。",
-                "AWS Bedrock requires SigV4 signing and is not supported by the standalone model test. Verify it through OpenClaw.",
+                format!(
+                    "AWS Bedrock 需要 SigV4 签名，当前不支持独立模型测试。请直接通过 {app_name} 验证。"
+                ),
+                format!(
+                    "AWS Bedrock requires SigV4 signing and is not supported by the standalone model test. Verify it through {app_name}."
+                ),
             )),
-            other => Err(AppError::Message(format!("OpenClaw 暂不支持协议: {other}"))),
+            other => Err(AppError::Message(format!(
+                "{app_name} 暂不支持协议: {other}"
+            ))),
         }
     }
 
