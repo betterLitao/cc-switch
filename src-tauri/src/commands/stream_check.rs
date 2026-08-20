@@ -242,7 +242,7 @@ async fn resolve_model_check_overrides(
         AppType::Claude | AppType::ClaudeDesktop | AppType::Codex
     ) && provider.is_codex_oauth()
     {
-        let auth_manager = codex_state.0.read().await;
+        let auth_manager = &codex_state.0;
         let account_id = match provider
             .meta
             .as_ref()
