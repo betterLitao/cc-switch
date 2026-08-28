@@ -50,6 +50,7 @@ jobs:
           git fetch upstream --prune
           upstream_branch=$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')
           upstream_branch=${upstream_branch:-main}
+          before_sha=$(git rev-parse HEAD)
 
           set +e
           git rebase "upstream/${upstream_branch}"
@@ -62,6 +63,15 @@ jobs:
             git diff --check > upstream-rebase-diff-check.txt || true
             git rebase --abort || true
             exit "$rebase_status"
+          fi
+
+          after_sha=$(git rev-parse HEAD)
+          if [ "$before_sha" = "$after_sha" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Upstream has no new commits; skipping push and build."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Rebased custom branch from $before_sha to $after_sha."
           fi
 
       - name: Upload rebase diagnostics
@@ -80,10 +90,12 @@ jobs:
         run: exit 1
 
       - name: Push rebased branch
+        if: steps.rebase.outputs.changed == 'true'
         shell: bash
         run: git push --force-with-lease origin HEAD:custom/model-availability
 
       - name: Start custom build
+        if: steps.rebase.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
         run: |

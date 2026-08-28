@@ -9,7 +9,7 @@ on:
         default: true
         type: boolean
       release_tag:
-        description: "prerelease tag；留空则使用 custom-<run number>"
+        description: "prerelease tag；留空则使用 custom-v<version>-build-<run number>"
         required: false
         default: ""
         type: string
@@ -153,6 +153,16 @@ jobs:
         with:
           ref: custom/model-availability
 
+      - name: Read application version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'package.json does not contain an application version'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -254,7 +264,7 @@ jobs:
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: cc-switch-${{ matrix.name }}-${{ github.run_number }}
+          name: cc-switch-v${{ steps.version.outputs.version }}-${{ matrix.name }}-build-${{ github.run_number }}
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -267,6 +277,21 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout version metadata
+        uses: actions/checkout@v6
+        with:
+          ref: custom/model-availability
+
+      - name: Read application version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ -z "$version" ] || [ "$version" = "undefined" ]; then
+            echo "package.json does not contain an application version" >&2
+            exit 1
+          fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Download installers
         uses: actions/download-artifact@v4
         with:
@@ -281,7 +306,7 @@ jobs:
           set -euo pipefail
           tag="$REQUESTED_TAG"
           if [ -z "$tag" ]; then
-            tag="custom-${GITHUB_RUN_NUMBER}"
+            tag="custom-v${APP_VERSION}-build-${GITHUB_RUN_NUMBER}"
           fi
           mkdir -p release-assets
           while IFS= read -r -d '' file; do
@@ -301,5 +326,5 @@ jobs:
           gh release create "$tag" "${files[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --prerelease \
-            --title "CC Switch $tag" \
-            --notes "Unsigned custom build from custom/model-availability."
+            --title "CC Switch v${APP_VERSION} (custom build ${GITHUB_RUN_NUMBER})" \
+            --notes "Unsigned custom build from custom/model-availability. Application version: v${APP_VERSION}."
