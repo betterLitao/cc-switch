@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       release_tag:
-        description: "prerelease tag；留空则使用 custom-source-<run ID>"
+        description: "prerelease tag；留空则使用 custom-v<version>-source-<run ID>"
         required: false
         default: ""
         type: string
@@ -26,6 +26,21 @@ jobs:
     name: Publish existing installers
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout version metadata
+        uses: actions/checkout@v6
+        with:
+          ref: custom/model-availability
+
+      - name: Read application version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ -z "$version" ] || [ "$version" = "undefined" ]; then
+            echo "package.json does not contain an application version" >&2
+            exit 1
+          fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Download installers from source run
         uses: actions/download-artifact@v4
         with:
@@ -44,7 +59,7 @@ jobs:
           set -euo pipefail
           tag="$REQUESTED_TAG"
           if [ -z "$tag" ]; then
-            tag="custom-source-${SOURCE_RUN_ID}"
+            tag="custom-v${APP_VERSION}-source-${SOURCE_RUN_ID}"
           fi
           mkdir -p release-assets
           while IFS= read -r -d '' file; do
@@ -64,5 +79,5 @@ jobs:
           gh release create "$tag" "${files[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --prerelease \
-            --title "CC Switch $tag" \
-            --notes "Unsigned custom build published from Actions run ${SOURCE_RUN_ID}."
+            --title "CC Switch v${APP_VERSION} (custom source build ${SOURCE_RUN_ID})" \
+            --notes "Unsigned custom build published from Actions run ${SOURCE_RUN_ID}. Application version: v${APP_VERSION}."
