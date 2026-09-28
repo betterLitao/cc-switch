@@ -138,6 +138,7 @@ impl ModelCheckService {
                 Self::check_structured_provider(&client, app_type, provider, &model, timeout).await
             }
             AppType::Hermes => Self::check_hermes(&client, provider, &model, timeout).await,
+            AppType::Mcode => Self::check_mcode(&client, provider, &model, timeout).await,
         };
 
         let elapsed = started.elapsed().as_millis() as u64;
@@ -211,9 +212,11 @@ impl ModelCheckService {
             )
             .or_else(|| from_value(provider.settings_config.get("model")))
             .or_else(|| Some(DEFAULT_GEMINI_MODEL.to_string())),
-            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::Pi => {
-                Self::first_model(provider.settings_config.get("models"))
-            }
+            AppType::OpenCode
+            | AppType::OpenClaw
+            | AppType::Hermes
+            | AppType::Pi
+            | AppType::Mcode => Self::first_model(provider.settings_config.get("models")),
         }
     }
 
@@ -822,6 +825,44 @@ impl ModelCheckService {
             provider,
             Some(format),
             None,
+            None,
+        )
+        .await
+    }
+
+    async fn check_mcode(
+        client: &Client,
+        provider: &Provider,
+        model: &str,
+        timeout: Duration,
+    ) -> Result<(u16, String), AppError> {
+        let options = provider
+            .settings_config
+            .get("options")
+            .ok_or_else(|| AppError::Message("MCode 缺少 options 配置".to_string()))?;
+        let base_url = Self::required_string(options.get("baseURL"), "options.baseURL")?;
+        let api_key = Self::required_string(options.get("apiKey"), "options.apiKey")?;
+        let api = provider
+            .settings_config
+            .get("api")
+            .and_then(Value::as_str)
+            .unwrap_or("anthropic-messages");
+        let (api_format, auth_strategy) = match api {
+            "anthropic-messages" => ("anthropic", AuthStrategy::ClaudeAuth),
+            "openai-completions" => ("openai_chat", AuthStrategy::Bearer),
+            "openai-responses" => ("openai_responses", AuthStrategy::Bearer),
+            other => return Err(AppError::Message(format!("MCode 暂不支持协议: {other}"))),
+        };
+
+        Self::check_claude(
+            client,
+            &base_url,
+            &AuthInfo::new(api_key, auth_strategy),
+            model,
+            timeout,
+            provider,
+            Some(api_format),
+            options.get("headers").and_then(Value::as_object),
             None,
         )
         .await
